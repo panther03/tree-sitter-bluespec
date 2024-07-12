@@ -1,1 +1,1 @@
-x = 4 + 5;
+ResultArbiter ra = test;
