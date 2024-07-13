@@ -188,7 +188,7 @@ var rules = {
   typeFormals: $ => seq('#', '(', $.typeFormal, repeat(seq(',', $.typeFormal))),
   typeFormal: $ => seq(choice('numeric', 'string'), 'type', $.typeIde),
   interfaceMemberDecl: $ => choice($.methodProto, $.subinterfaceDecl),
-  methodProto: $ => seq(optional($.attributeInstances), 'method', $.type, $.identifier, '(', optional($.methodProtoFormals), ')'),
+  methodProto: $ => seq(optional($.attributeInstances), 'method', $.type, $.identifier, '(', optional($.methodProtoFormals), ')', ';'),
   methodProtoFormals: $ => seq($.methodProtoFormal, repeat(seq(',', $.methodProtoFormal))),
   methodProtoFormal: $ => seq(optional($.attributeInstances), $.type, $.identifier),
 
@@ -201,7 +201,7 @@ var rules = {
 
   moduleDef: $ => seq(optional($.attributeInstances), $.moduleProto, repeat($.moduleStmt), 'endmodule', optional(seq(':', $.identifier))),
   // TODO provisos
-  moduleProto: $ => seq('module', optional(seq('[', $.type, ']')), $.identifier),
+  moduleProto: $ => seq('module', optional(seq('[', $.type, ']')), $.identifier, optional($.moduleFormalParams), '(', $.moduleFormalArgs, ')', ';'),
   moduleFormalParams: $ => seq('#', '(', $.moduleFormalParam, repeat(seq(',', $.moduleFormalParam))),
   moduleFormalParam: $ => seq(optional($.attributeInstances), optional('parameter'), $.type, $.identifier),
   moduleFormalArgs: $ => choice(seq(optional($.attributeInstances), $.type),
@@ -220,10 +220,20 @@ var rules = {
   // Section 5.5 
   // Interface definition
   moduleStmt: $ => choice(
+    $.moduleInst,
     $.methodDef,
     $.subinterfaceDef,
+    $.rule,
+    $.varDo,
+    $.varDeclDo,
+    $.functionCallStmt,
+    $.systemTaskStmt,
+    seq('(', $.expression, ')'),
     $.returnStmt,
-    $.rule
+    $.varDecl,
+    $.varAssign,
+    $.functionDef, 
+    $.moduleDef
   ),
   methodDef: $ => seq(
       'method', optional($.type), $.identifier, '(', $.methodFormals, ')', optional($.implicitCond), ';',
@@ -273,12 +283,12 @@ var rules = {
   // Section 9.2
   // Variable Assignment
   varAssign: $ => seq($.lValue, '=', $.expression, ';'),
-  lValue: $ => prec(PREC.LVALUE, choice(
+  lValue: $ => choice(
     $.identifier,
     seq($.lValue, '.', $.identifier),
     seq($.lValue, '[', $.expression, ']'),
     seq($.lValue, '[', $.expression, ':', $.expression, ']'),
-  )),
+  ),
   
   // Section 9.4
   // Register reads and writes
@@ -419,8 +429,9 @@ var rules = {
   actionBlock: $ => prec.right(seq('action', optional(seq(':', $.identifier)), repeat($.actionStmt), $.expression, 'endaction', optional(seq(':', $.identifier)))),
   actionStmt: $ => prec(3,choice($.regWrite,
     $.varDo, $.varDeclDo,
-    $.functionCall,
-    $.systemTaskStmt,
+    $.functionCallStmt,
+    $.methodCallStmt,
+    $.systemTaskStmt,    
     seq('(', $.expression, ')'),
     $.actionBlock,
     $.varDecl,
@@ -438,7 +449,8 @@ var rules = {
   actionValueBlock: $ => prec.right(seq('actionvalue', optional(seq(':', $.identifier)), repeat($.actionValueStmt), $.expression, 'endactionvalue', optional(seq(':', $.identifier)))),
   actionValueStmt: $ => prec(PREC.AVSTMT, choice($.regWrite,
     $.varDo, $.varDeclDo,
-    $.functionCall,
+    $.functionCallStmt,
+    $.methodCallStmt,
     $.systemTaskStmt,
     seq('(', $.expression, ')'),
     $.returnStmt,
@@ -460,9 +472,11 @@ var rules = {
   // 10.8 Function calls
   // TODO: make parentheses optional
   functionCall: $ => prec(PREC.CALL,prec.left(seq($.exprPrimary, seq('(', optional(seq($.expression, repeat(seq(',', $.expression)))), ')')))),
+  functionCallStmt: $ => seq($.functionCall, ';'),
 
   // 10.9 Method calls
   methodCall: $ => prec(PREC.MCALL, prec.left(seq($.exprPrimary, '.',  $.identifier, optional(seq('(', optional(seq($.expression, repeat(seq(',', $.expression)))), ')'))))),
+  methodCallStmt: $ => seq($.methodCall, ';'),
 
   // 10.11.1 Struct expressions
   structExpr: $ => seq($.Identifier, '{', $.memberBind, repeat(seq(',', $.memberBind)), '}'),
@@ -513,6 +527,7 @@ module.exports = grammar({
     //[$.actionValueStmt, $.exprPrimary],
     [$.actionBeginEndStmt,$.expressionBeginEndStmt],
     [$.actionValueBeginEndStmt,$.expressionBeginEndStmt],
+    [$.lValue, $.arrayIndexes],
     [$.condPredicate, $.condPredicate],
     //[$.exprPrimary, $.methodCall],
     //[$.exprPrimary, $.actionStmt],

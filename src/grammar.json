@@ -1088,6 +1088,10 @@
         {
           "type": "STRING",
           "value": ")"
+        },
+        {
+          "type": "STRING",
+          "value": ";"
         }
       ]
     },
@@ -1258,6 +1262,34 @@
         {
           "type": "SYMBOL",
           "name": "identifier"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "moduleFormalParams"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "SYMBOL",
+          "name": "moduleFormalArgs"
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        },
+        {
+          "type": "STRING",
+          "value": ";"
         }
       ]
     },
@@ -1533,6 +1565,10 @@
       "members": [
         {
           "type": "SYMBOL",
+          "name": "moduleInst"
+        },
+        {
+          "type": "SYMBOL",
           "name": "methodDef"
         },
         {
@@ -1541,11 +1577,60 @@
         },
         {
           "type": "SYMBOL",
+          "name": "rule"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "varDo"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "varDeclDo"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "functionCallStmt"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "systemTaskStmt"
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "("
+            },
+            {
+              "type": "SYMBOL",
+              "name": "expression"
+            },
+            {
+              "type": "STRING",
+              "value": ")"
+            }
+          ]
+        },
+        {
+          "type": "SYMBOL",
           "name": "returnStmt"
         },
         {
           "type": "SYMBOL",
-          "name": "rule"
+          "name": "varDecl"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "varAssign"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "functionDef"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "moduleDef"
         }
       ]
     },
@@ -2059,84 +2144,80 @@
       ]
     },
     "lValue": {
-      "type": "PREC",
-      "value": 15,
-      "content": {
-        "type": "CHOICE",
-        "members": [
-          {
-            "type": "SYMBOL",
-            "name": "identifier"
-          },
-          {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "lValue"
-              },
-              {
-                "type": "STRING",
-                "value": "."
-              },
-              {
-                "type": "SYMBOL",
-                "name": "identifier"
-              }
-            ]
-          },
-          {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "lValue"
-              },
-              {
-                "type": "STRING",
-                "value": "["
-              },
-              {
-                "type": "SYMBOL",
-                "name": "expression"
-              },
-              {
-                "type": "STRING",
-                "value": "]"
-              }
-            ]
-          },
-          {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "lValue"
-              },
-              {
-                "type": "STRING",
-                "value": "["
-              },
-              {
-                "type": "SYMBOL",
-                "name": "expression"
-              },
-              {
-                "type": "STRING",
-                "value": ":"
-              },
-              {
-                "type": "SYMBOL",
-                "name": "expression"
-              },
-              {
-                "type": "STRING",
-                "value": "]"
-              }
-            ]
-          }
-        ]
-      }
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "identifier"
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "lValue"
+            },
+            {
+              "type": "STRING",
+              "value": "."
+            },
+            {
+              "type": "SYMBOL",
+              "name": "identifier"
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "lValue"
+            },
+            {
+              "type": "STRING",
+              "value": "["
+            },
+            {
+              "type": "SYMBOL",
+              "name": "expression"
+            },
+            {
+              "type": "STRING",
+              "value": "]"
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "lValue"
+            },
+            {
+              "type": "STRING",
+              "value": "["
+            },
+            {
+              "type": "SYMBOL",
+              "name": "expression"
+            },
+            {
+              "type": "STRING",
+              "value": ":"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "expression"
+            },
+            {
+              "type": "STRING",
+              "value": "]"
+            }
+          ]
+        }
+      ]
     },
     "regWrite": {
       "type": "PREC",
@@ -3327,7 +3408,11 @@
           },
           {
             "type": "SYMBOL",
-            "name": "functionCall"
+            "name": "functionCallStmt"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "methodCallStmt"
           },
           {
             "type": "SYMBOL",
@@ -3471,7 +3556,11 @@
           },
           {
             "type": "SYMBOL",
-            "name": "functionCall"
+            "name": "functionCallStmt"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "methodCallStmt"
           },
           {
             "type": "SYMBOL",
@@ -3634,6 +3723,19 @@
         }
       }
     },
+    "functionCallStmt": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "functionCall"
+        },
+        {
+          "type": "STRING",
+          "value": ";"
+        }
+      ]
+    },
     "methodCall": {
       "type": "PREC",
       "value": 12,
@@ -3712,6 +3814,19 @@
           ]
         }
       }
+    },
+    "methodCallStmt": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "methodCall"
+        },
+        {
+          "type": "STRING",
+          "value": ";"
+        }
+      ]
     },
     "structExpr": {
       "type": "SEQ",
@@ -4412,6 +4527,10 @@
     [
       "actionValueBeginEndStmt",
       "expressionBeginEndStmt"
+    ],
+    [
+      "lValue",
+      "arrayIndexes"
     ],
     [
       "condPredicate",
