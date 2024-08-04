@@ -1,536 +1,2754 @@
-function genericBeginEndStmt(rules, ctxt) {
-  rules[`${ctxt}BeginEndStmt`] = ($) => seq(
-    "begin", optional(seq(':', $.identifier)),
-    repeat($[`${ctxt}Stmt`]),
-    'end', optional(seq(':', $.identifier)))
-}
-
-function genericIf(rules, ctxt) {
-  rules[`${ctxt}If`] = ($) => prec.right(seq("if", '(', $.condPredicate, ')', $[`${ctxt}Stmt`], optional(seq("else", $[`${ctxt}Stmt`]))))
-}
-
-function exprBinop($, prior, ops) {
-  return prec.left(prior, seq($.expression, ops, $.expression));
-}
-
-const PREC = {
-  PARENT: 37,     // () [] :: .                                   Left Highest
-  // TODO: not all unaries have the same precedence in the spec?
-  UNARY: 36,      // + - ! ~ & ~& | ~| ^ ~^ ^~ (unary)
-  MUL: 34,        // * / %                                        Left
-  ADD: 33,        // + - (binary)                                 Left
-  SHIFT: 32,      // << >>                                        Left
-  RELATIONAL: 31, // < <= > >=                                    Left
-  EQUAL: 30,     // == !=                                        Left
-  AND: 29,        // & (binary)                                   Left
-  XOR: 28,        // ^                                            Left
-  XNOR: 27,       // ~^ ^~ (binary)                               Left
-  OR: 26,         // | (binary)                                   Left
-
-  LOGICAL_AND: 25, // &&                                           Left
-  LOGICAL_OR: 24, // ||                                           Left
-  CONDITIONAL: 23, // ?: (conditional operator)                    Right
-  IMPLICATION: 22, // –> <–>                                       Right
-  ASSIGN: 21,     // = += -= *= /= %= &= ^= |= <<= >>= <<<= >>>= := :/ <= None
-  CONCAT: 20,     // {} {{}}                            Concatenation   Lowest
-  CALL: 19,
-  WRITE: 18,
-  DECLARE: 17,
-  ASSIGN: 16,
-  LVALUE: 15,
-  AVSTMT: 14,
-  TEXPR: 13,
-  MCALL: 12,
-  BSELECT: 11,
-  TYPEIDE: 10
-
-};
-
 var rules = {
-  // Top rule
-  source_file: $ => choice(
-    $.package,
-    seq(
-      repeat($.exportDecl),
-      repeat($.importDecl),
-      repeat($.packageStmt),
-    ),
-  ),
-
-
-  // Section 2.1
-  // Comments
-
-  // Same as in Verilog
-  // comment: $ => one_line_comment | block_comment
-  // one_line_comment: $ => // comment_text \n
-  // block_comment: $ => /* comment_text */
-  // comment_text: $ => { Any_ASCII_character }
-
-  // http://stackoverflow.com/questions/13014947/regex-to-match-a-c-style-multiline-comment/36328890#36328890
-  // from: https://github.com/tree-sitter/tree-sitter-c/blob/master/grammar.js
-  comment: $ => token(choice(
-    seq('//', /.*/),
-    seq(
-      '/*',
-      /[^*]*\*+([^/*][^*]*\*+)*/,
-      '/'
-    )
+  top: $ => repeat(choice(
+  $.exportDecl,
+  $.importDecl,
+  $.packageStmt,
+  $.r_package,
   )),
-
-  // Section 2.2
-  // Identifiers
-  
-  Identifier: ($) => /[A-Z_][a-zA-Z0-9_$]*/,
-  identifier: ($) => /[a-z_][a-zA-Z0-9_$]*/,
-
-  // Section 2.3
-  // Integer Literals
-  intLiteral: ($) => prec.left(choice("'0", "'1",
-    $.sizedIntLiteral, $.unsizedIntLiteral)),
-  sizedIntLiteral: ($) => seq($.bitWidth, $.baseLiteral),
-  unsizedIntLiteral: ($) => choice(seq(optional($.sign), $.baseLiteral), seq(optional($.sign), $.decNum)),
-
-  baseLiteral: ($) => choice(
-    seq(choice("'d", "'D"), $.decDigitsUnderscore),
-    seq(choice("'h", "'H"), $.hexDigitsUnderscore),
-    seq(choice("'o", "'O"), $.decDigitsUnderscore),
-    seq(choice("'B", "'B"), $.binDigitsUnderscore),
+  identifier: $ => choice(
+  $.Identifier,
+  'no_reset',
+  seq(
+  $.identifier,
+  '::',
+  $.identifier,
   ),
-
-  decNum: ($) => seq($.decDigits, optional($.decDigitsUnderscore)),
-
-  bitWidth: ($) => alias($.decDigits, $.bitWidth),
-  sign: ($) => choice("+", "-"),
-
-  decDigits: ($) => repeat1(/[0-9]/),
-  decDigitsUnderscore: ($) => repeat1(/[0-9_]/),
-  hexDigitsUnderscore: ($) => repeat1(/[0-9a-fA-F_]/),
-  octDigitsUnderscore: ($) => repeat1(/[0-7_]/),
-  binDigitsUnderscore: ($) => repeat1(/[0-1_]/),
-
-  // Section 2.4
-  // Real Literals
-
-  realLiteral: ($) => choice(
-    seq($.decNum, optional(seq('.', $.decDigitsUnderscore)), $.exp, optional($.sign), $.decDigitsUnderscore),
-    seq($.decNum, '.', $.decDigitsUnderscore),
+  seq(
+  $.identifier,
+  '.',
+  $.identifier,
   ),
-  exp: ($) => choice('e', 'E'),
-
-  // Section 2.5
-  // String Literals
-  // TODO: the set of allowed characters is probably more than this
-  stringLiteral: $ => seq(
-    '"', token.immediate(prec(1, /[^\\"\n]+/)), '"'
+  seq(
+  $.identifier,
+  seq(
+  '[',
+  optional($.expression),
+  ']',
   ),
-
-  // Section 3
-  // Packages and the outermost structure of a BSV design
-  package: $ => seq(
-    seq("package", $.packageIde, ';'),
-    seq(
-      repeat($.exportDecl),
-      repeat($.importDecl),
-      repeat($.packageStmt),
-    ),
-    seq("endpackage", optional(seq(':', $.packageIde)))
   ),
-
-  exportDecl: $ => seq("export", $.exportItem, repeat(seq(',', $.exportItem)), ';'),
+  seq(
+  $.identifier,
+  '[]',
+  ),
+  ),
+  identifier_type: $ => choice(
+  $.Identifier,
+  'Action',
+  'ActionValue',
+  'Rules',
+  'void',
+  'module',
+  'rule',
+  ),
+  stringLiteral: $ => $.StringLiteral,
+  r_package: $ => seq(
+  'package',
+  $.packageIde,
+  ';',
+  repeat(choice(
+  $.exportDecl,
+  $.importDecl,
+  $.packageStmt,
+  )),
+  'endpackage',
+  optional(seq(
+  ':',
+  $.packageIde,
+  )),
+  ),
+  non_package: $ => choice(
+  repeat($.exportDecl),
+  repeat($.importDecl),
+  repeat($.packageStmt),
+  ),
+  exportDecl: $ => seq(
+  'export',
+  $.exportItem,
+  repeat(seq(
+  ',',
+  $.exportItem,
+  )),
+  ';',
+  ),
   exportItem: $ => choice(
-    seq($.identifier, optional(seq('(', '..', ')'))),
-    seq($.Identifier, optional(seq('(', '..', ')'))),
-    seq($.packageIde, '::', '*'),
+  seq(
+  $.identifier,
+  optional('(..)'),
   ),
-
-  importDecl: $ => seq("import", $.importItem, repeat(seq(',', $.importItem)), ';'),
-  importItem: $ => seq($.packageIde, '::', '*'),
-
+  seq(
+  $.identifier_type,
+  optional('(..)'),
+  ),
+  seq(
+  $.packageIde,
+  '::',
+  '*',
+  ),
+  ),
+  importDecl: $ => seq(
+  'import',
+  $.importItem,
+  repeat(seq(
+  ',',
+  $.importItem,
+  )),
+  ';',
+  ),
+  importItem: $ => seq(
+  $.packageIde,
+  '::',
+  '*',
+  ),
   packageStmt: $ => choice(
-    $.moduleDef,
-    $.interfaceDecl,
-    //$.typeDef,
-    $.varDecl,
-    $.varAssign,
-    $.functionDef,
-    //$.typeclassDef,
-    //$.typeclassInstanceDef,
-    //$.externModuleImport
+  $.moduleDef,
+  $.interfaceDecl,
+  $.typeDef,
+  $.varDecl,
+  $.varAssign,
+  $.functionDef,
+  $.typeclassDef,
+  $.typeclassInstanceDef,
+  $.externModuleImport,
+  $.externCImport,
   ),
-
-  packageIde: $ => alias($.Identifier, $.packageIde),
-
-  // Section 4
-  // Types
-  type: $ => choice($.typePrimary,
-    seq($.typePrimary, '(', $.type, repeat(seq(',', $.type)),')')),
-  
+  packageIde: $ => $.identifier_type,
+  type: $ => choice(
+  $.typePrimary,
+  seq(
+  $.typePrimary,
+  '(',
+  $.type,
+  optional($.identifier),
+  repeat(seq(
+  ',',
+  $.type,
+  optional($.identifier),
+  )),
+  ')',
+  ),
+  'let',
+  ),
   typePrimary: $ => choice(
-    seq($.typeIde, optional(seq('#', '(', $.type, repeat(seq(',', $.type)), ')'))),
-    $.typeNat,
-    seq('bit','[', $.typeNat, ':', $.typeNat, ']')
+  seq(
+  $.typeIde,
+  optional(seq(
+  '#',
+  '(',
+  $.type,
+  repeat(seq(
+  ',',
+  $.type,
+  )),
+  ')',
+  )),
   ),
-
-  typeIde: $ => prec(PREC.TYPEIDE, alias($.Identifier, $.typeIde)),
-  typeNat: $ => $.decDigits,
-
-  // Section 5.2
-  // Interface declaration
-
+  $.typeNat,
+  seq(
+  'bit',
+  '[',
+  $.typeNat,
+  ':',
+  $.typeNat,
+  ']',
+  ),
+  seq(
+  'function',
+  $.typePrimary,
+  optional($.identifier),
+  ),
+  seq(
+  '(',
+  $.type,
+  ')',
+  ),
+  ),
+  typeIde: $ => $.identifier_type,
+  typeNat: $ => $.IntLiteral,
   interfaceDecl: $ => seq(
-    optional($.attributeInstances),
-    'interface', $.typeDefType, ';',
-    repeat( $.interfaceMemberDecl ),
-    'endinterface', optional(seq(':', $.typeIde))
+  optional($.attributeInstances),
+  'interface',
+  $.typeDefType,
+  ';',
+  repeat($.interfaceMemberDecl),
+  'endinterface',
+  optional(seq(
+  ':',
+  $.typeIde,
+  )),
   ),
-  typeDefType: $ => seq($.typeIde, optional($.typeFormals)),
-  typeFormals: $ => seq('#', '(', $.typeFormal, repeat(seq(',', $.typeFormal))),
-  typeFormal: $ => seq(choice('numeric', 'string'), 'type', $.typeIde),
-  interfaceMemberDecl: $ => choice($.methodProto, $.subinterfaceDecl),
-  methodProto: $ => seq(optional($.attributeInstances), 'method', $.type, $.identifier, '(', optional($.methodProtoFormals), ')', ';'),
-  methodProtoFormals: $ => seq($.methodProtoFormal, repeat(seq(',', $.methodProtoFormal))),
-  methodProtoFormal: $ => seq(optional($.attributeInstances), $.type, $.identifier),
-
-  // Section 5.2.1
-  // Subinterfaces
-  subinterfaceDecl: $ => seq(optional($.attributeInstances), 'interface', $.typeDefType, ';'),
-
-  // Section 5.3
-  // Module definition
-
-  moduleDef: $ => seq(optional($.attributeInstances), $.moduleProto, repeat($.moduleStmt), 'endmodule', optional(seq(':', $.identifier))),
-  // TODO provisos
-  moduleProto: $ => seq('module', optional(seq('[', $.type, ']')), $.identifier, optional($.moduleFormalParams), '(', $.moduleFormalArgs, ')', ';'),
-  moduleFormalParams: $ => seq('#', '(', $.moduleFormalParam, repeat(seq(',', $.moduleFormalParam))),
-  moduleFormalParam: $ => seq(optional($.attributeInstances), optional('parameter'), $.type, $.identifier),
-  moduleFormalArgs: $ => choice(seq(optional($.attributeInstances), $.type),
-    seq(optional($.attributeInstances), $.type, $.identifier, repeat(seq(',', optional($.attributeInstances), $.type)))), 
-
-  // Section 5.4.1
-  // Short form instantiation
-  moduleInst: $ => seq(optional($.attributeInstances), 'type', $.identifier, '<-', $.moduleApp),
-  moduleApp: $ => seq($.identifier, '(', optional(seq($.moduleActualParamArg, repeat(seq(',', $.moduleActualParamArg)))), ')'),
-  moduleActualParamArg: $ => choice($.expression, seq('clocked_by', $.expression), seq('reset_by', $.expression)),
-
-  // Section 5.4.2
-  // Long form instantiation
-  // TODO
-
-  // Section 5.5 
-  // Interface definition
+  typeDefType: $ => choice(
+  seq(
+  $.typeIde,
+  optional($.typeFormals),
+  ),
+  seq(
+  'function',
+  $.typeIde,
+  $.identifier,
+  '(',
+  optional($.functionFormals),
+  ')',
+  ),
+  ),
+  typeFormals: $ => seq(
+  '#',
+  '(',
+  $.typeFormal,
+  repeat(seq(
+  ',',
+  $.typeFormal,
+  )),
+  ')',
+  ),
+  typeFormal: $ => choice(
+  seq(
+  optional('numeric'),
+  optional('type'),
+  choice(
+  $.typeIde,
+  $.typeDefType,
+  ),
+  ),
+  $.IntLiteral,
+  ),
+  interfaceMemberDecl: $ => choice(
+  $.methodProto,
+  $.subinterfaceDecl,
+  ),
+  methodProto: $ => seq(
+  optional($.attributeInstances),
+  'method',
+  $.type,
+  $.identifier,
+  optional(seq(
+  '(',
+  optional($.methodProtoFormals),
+  ')',
+  )),
+  ';',
+  ),
+  methodProtoFormals: $ => seq(
+  $.methodProtoFormal,
+  repeat(seq(
+  ',',
+  $.methodProtoFormal,
+  )),
+  ),
+  methodProtoFormal: $ => seq(
+  optional($.attributeInstances),
+  $.type,
+  $.identifier,
+  ),
+  subinterfaceDecl: $ => seq(
+  optional($.attributeInstances),
+  'interface',
+  $.typeDefType,
+  $.identifier,
+  ';',
+  ),
+  moduleDef: $ => seq(
+  optional($.attributeInstances),
+  $.moduleProto,
+  repeat($.moduleStmt),
+  'endmodule',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  moduleProto: $ => seq(
+  'module',
+  optional(seq(
+  '[',
+  $.type,
+  ']',
+  )),
+  $.identifier,
+  optional($.moduleFormalParams),
+  '(',
+  optional($.moduleFormalArgs),
+  ')',
+  optional($.provisos),
+  ';',
+  ),
+  moduleFormalParams: $ => seq(
+  '#',
+  '(',
+  $.moduleFormalParam,
+  repeat(seq(
+  ',',
+  $.moduleFormalParam,
+  )),
+  ')',
+  ),
+  moduleFormalParam: $ => seq(
+  optional($.attributeInstances),
+  optional('parameter'),
+  choice(
+  seq(
+  $.type,
+  $.identifier,
+  ),
+  seq(
+  'function',
+  $.type,
+  $.identifier,
+  '(',
+  optional(seq(
+  $.type,
+  $.identifier,
+  repeat(seq(
+  ',',
+  $.type,
+  $.identifier,
+  )),
+  )),
+  ')',
+  ),
+  ),
+  ),
+  moduleFormalArgs: $ => choice(
+  seq(
+  optional($.attributeInstances),
+  $.type,
+  ),
+  seq(
+  optional($.attributeInstances),
+  choice(
+  seq(
+  $.type,
+  $.identifier,
+  optional('[]'),
+  ),
+  seq(
+  'function',
+  $.type,
+  $.identifier,
+  '(',
+  optional(seq(
+  $.type,
+  $.identifier,
+  repeat(seq(
+  ',',
+  $.type,
+  $.identifier,
+  )),
+  )),
+  ')',
+  ),
+  ),
+  repeat(seq(
+  ',',
+  optional($.attributeInstances),
+  choice(
+  seq(
+  $.type,
+  $.identifier,
+  optional('[]'),
+  ),
+  seq(
+  'function',
+  $.type,
+  $.identifier,
+  '(',
+  optional(seq(
+  $.type,
+  $.identifier,
+  repeat(seq(
+  ',',
+  $.type,
+  $.identifier,
+  )),
+  )),
+  ')',
+  ),
+  ),
+  )),
+  ),
+  ),
   moduleStmt: $ => choice(
-    $.moduleInst,
-    $.methodDef,
-    $.subinterfaceDef,
-    $.rule,
-    $.varDo,
-    $.varDeclDo,
-    $.functionCallStmt,
-    $.systemTaskStmt,
-    seq('(', $.expression, ')'),
-    $.returnStmt,
-    $.varDecl,
-    $.varAssign,
-    $.functionDef, 
-    $.moduleDef
+  $.moduleInst,
+  $.methodDef,
+  $.subinterfaceDef,
+  $.r_rule,
+  choice(
+  $.varDo,
+  $.varDeclDo,
   ),
-  methodDef: $ => seq(
-      'method', optional($.type), $.identifier, '(', $.methodFormals, ')', optional($.implicitCond), ';',
-      choice(
-        $.actionBlock,
-        $.actionValueBlock,
-        repeat($.functionBodyStmt)
-      ),
-  'endmethod', optional(seq(':', $.identifier))),
-  methodFormals: $ => seq($.methodFormal, repeat(seq(',', $.methodFormal))),
-  methodFormal: $ => seq(optional($.type), $.identifier),
-  implicitCond: $ => seq('if', '(', $.condPredicate, ')'),
-  condPredicate: $ => seq($.exprOrCondPattern, repeat(prec.left(seq('&&&', $.exprOrCondPattern)))),
-  exprOrCondPattern: $ => choice(
-    $.expression,
-    // TODO
-    //seq($.expression, 'matches', $.pattern)
+  seq(
+  $.functionCall,
+  ';',
   ),
-  
-  // Section 5.5.1
-  // Shorthands for Action and ActionValue method definitions
-  // TODO
-
-  // Section 5.5.2
-  // Definition of subinterfaces
-  subinterfaceDef: $ => seq('interface', $.Identifier, $.identifier, ';', repeat($.interfaceStmt), 'endinterface', optional(seq(':', $.identifier))),
-
-  // Section 5.5.3
-  // Definition of methods and subinterfaces by assignment
-  // TODO
-
-  // Section 5.6
-  // Rules in module definitions
-  rule: $ => seq(optional($.attributeInstances), 'rule', $.identifier, optional($.ruleCond), ';', repeat($.actionStmt), 'endrule', optional(seq(':', $.identifier))),
-  ruleCond: $ => seq('(', $.condPredicate, ')'),
-
-
-  // Section 9.1
-  // Variable and array declaration and initialization
+  $.systemTaskStmt,
+  seq(
+  optional($.expression),
+  ';',
+  ),
+  $.returnStmt,
+  $.varDecl,
+  $.varAssign,
+  $.functionDef,
+  $.moduleDef,
+  $.beginEndStmt_moduleStmt,
+  $.if_moduleStmt,
+  $.case_moduleStmt,
+  $.for_moduleStmt,
+  $.while_moduleStmt,
+  ),
+  moduleInst: $ => choice(
+  seq(
+  optional($.attributeInstances),
+  $.type,
+  $.identifier,
+  '<-',
+  $.moduleApp,
+  ';',
+  ),
+  seq(
+  optional($.attributeInstances),
+  $.type,
+  $.identifier,
+  '(',
+  ')',
+  ';',
+  $.moduleApp2,
+  $.identifier,
+  '(',
+  optional($.moduleActualArgs),
+  ')',
+  ';',
+  ),
+  ),
+  moduleApp: $ => seq(
+  $.identifier,
+  '(',
+  optional(seq(
+  $.moduleActualParamArg,
+  repeat(seq(
+  ',',
+  $.moduleActualParamArg,
+  )),
+  )),
+  ')',
+  ),
+  moduleActualParamArg: $ => choice(
+  $.expression,
+  seq(
+  'clocked_by',
+  $.expression,
+  ),
+  seq(
+  'reset_by',
+  $.expression,
+  ),
+  ),
+  moduleApp2: $ => seq(
+  $.identifier,
+  optional(seq(
+  '#',
+  '(',
+  $.moduleActualParam,
+  repeat(seq(
+  ',',
+  $.moduleActualParam,
+  )),
+  ')',
+  )),
+  ),
+  moduleActualParam: $ => $.expression,
+  moduleActualArgs: $ => seq(
+  $.moduleActualArg,
+  repeat(seq(
+  ',',
+  $.moduleActualArg,
+  )),
+  ),
+  moduleActualArg: $ => choice(
+  $.expression,
+  seq(
+  'clocked_by',
+  $.expression,
+  ),
+  seq(
+  'reset_by',
+  $.expression,
+  ),
+  ),
+  methodDef: $ => choice(
+  seq(
+  'method',
+  optional($.type),
+  $.identifier,
+  optional(seq(
+  '(',
+  optional($.methodFormals),
+  ')',
+  )),
+  optional($.implicitCond),
+  ';',
+  $.functionBody,
+  'endmethod',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  seq(
+  'method',
+  'Action',
+  $.identifier,
+  optional(seq(
+  '(',
+  optional($.methodFormals),
+  ')',
+  )),
+  optional($.implicitCond),
+  ';',
+  repeat($.actionStmt),
+  'endmethod',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  seq(
+  'method',
+  'ActionValue',
+  '#',
+  '(',
+  $.type,
+  ')',
+  optional($.identifier),
+  optional(seq(
+  '(',
+  optional($.methodFormals),
+  ')',
+  )),
+  optional($.implicitCond),
+  ';',
+  repeat($.actionValueStmt),
+  'endmethod',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  seq(
+  'method',
+  optional($.type),
+  $.identifier,
+  optional(seq(
+  '(',
+  optional($.methodFormals),
+  ')',
+  )),
+  optional($.implicitCond),
+  '=',
+  $.expression,
+  ';',
+  ),
+  ),
+  implicitCond: $ => seq(
+  'if',
+  '(',
+  $.condPredicate,
+  ')',
+  ),
+  methodFormals: $ => seq(
+  $.methodFormal,
+  repeat(seq(
+  ',',
+  $.methodFormal,
+  )),
+  ),
+  methodFormal: $ => seq(
+  optional($.type),
+  $.identifier,
+  ),
+  subinterfaceDef: $ => choice(
+  seq(
+  'interface',
+  $.identifier_type,
+  $.identifier,
+  ';',
+  repeat($.interfaceStmt),
+  'endinterface',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  seq(
+  'interface',
+  optional($.type),
+  $.identifier,
+  '=',
+  $.expression,
+  ';',
+  ),
+  ),
+  interfaceStmt: $ => choice(
+  $.methodDef,
+  $.subinterfaceDef,
+  $.expressionStmt,
+  ),
+  expressionStmt: $ => choice(
+  $.varDecl,
+  $.varAssign,
+  $.functionDef,
+  $.moduleDef,
+  $.beginEndStmt_expressionStmt,
+  $.if_expressionStmt,
+  $.case_expressionStmt,
+  $.for_expressionStmt,
+  $.while_expressionStmt,
+  ),
+  r_rule: $ => seq(
+  optional($.attributeInstances),
+  'rule',
+  $.identifier,
+  optional($.ruleCond),
+  ';',
+  $.ruleBody,
+  'endrule',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  ruleCond: $ => seq(
+  optional('if'),
+  '(',
+  $.condPredicate,
+  ')',
+  ),
+  ruleBody: $ => repeat($.actionStmt),
+  typeDef: $ => choice(
+  $.typedefSynonym,
+  $.typedefEnum,
+  $.typedefStruct,
+  $.typedefTaggedUnion,
+  ),
+  typedefSynonym: $ => seq(
+  'typedef',
+  $.type,
+  $.typeDefType,
+  ';',
+  ),
+  typedefEnum: $ => seq(
+  'typedef',
+  'enum',
+  '{',
+  $.typedefEnumElements,
+  '}',
+  $.identifier_type,
+  optional($.derives),
+  ';',
+  ),
+  typedefEnumElements: $ => seq(
+  $.typedefEnumElement,
+  repeat(seq(
+  ',',
+  $.typedefEnumElement,
+  )),
+  ),
+  typedefEnumElement: $ => choice(
+  seq(
+  $.identifier_type,
+  optional(seq(
+  '=',
+  $.IntLiteral,
+  )),
+  ),
+  seq(
+  $.identifier_type,
+  '[',
+  $.IntLiteral,
+  ']',
+  optional(seq(
+  '=',
+  $.IntLiteral,
+  )),
+  ),
+  seq(
+  $.identifier_type,
+  '[',
+  $.IntLiteral,
+  ':',
+  $.IntLiteral,
+  ']',
+  optional(seq(
+  '=',
+  $.IntLiteral,
+  )),
+  ),
+  ),
+  typedefStruct: $ => seq(
+  'typedef',
+  'struct',
+  '{',
+  repeat($.structMember),
+  '}',
+  $.typeDefType,
+  optional($.derives),
+  ';',
+  ),
+  typedefTaggedUnion: $ => seq(
+  'typedef',
+  'union',
+  'tagged',
+  '{',
+  repeat($.unionMember),
+  '}',
+  $.typeDefType,
+  optional($.derives),
+  ';',
+  ),
+  structMember: $ => choice(
+  seq(
+  $.type,
+  $.identifier,
+  ';',
+  ),
+  seq(
+  $.subUnion,
+  $.identifier,
+  ';',
+  ),
+  ),
+  unionMember: $ => choice(
+  seq(
+  $.type,
+  $.identifier_type,
+  ';',
+  ),
+  seq(
+  $.subStruct,
+  $.identifier_type,
+  ';',
+  ),
+  seq(
+  $.subUnion,
+  $.identifier_type,
+  ';',
+  ),
+  seq(
+  'void',
+  $.identifier_type,
+  ';',
+  ),
+  ),
+  subStruct: $ => seq(
+  'struct',
+  '{',
+  repeat($.structMember),
+  '}',
+  ),
+  subUnion: $ => seq(
+  'union',
+  'tagged',
+  '{',
+  repeat($.unionMember),
+  '}',
+  ),
   varDecl: $ => choice(
-    seq($.type, $.varInit, repeat(seq(',', $.varInit)), ';'),
-    seq('let', $.identifier, '=', $.expression, ';')
+  seq(
+  optional($.attributeInstances),
+  $.type,
+  $.varInit,
+  repeat(seq(
+  ',',
+  $.varInit,
+  )),
+  ';',
   ),
-  varInit: $ => seq($.identifier, optional($.arrayDims), optional(seq('=', $.expression))),
-  arrayDims: $ => seq('[', $.expression, ']', repeat(seq('[', $.expression, ']'))),
-
-  // Section 9.2
-  // Variable Assignment
-  varAssign: $ => seq($.lValue, '=', $.expression, ';'),
+  seq(
+  optional($.attributeInstances),
+  'let',
+  $.lValue,
+  '=',
+  $.expression,
+  ';',
+  ),
+  ),
+  varInit: $ => seq(
+  optional($.attributeInstances),
+  $.identifier,
+  optional($.arrayDims),
+  optional(seq(
+  '=',
+  $.expression,
+  )),
+  ),
+  arrayDims: $ => seq(
+  '[',
+  $.expression,
+  ']',
+  repeat(seq(
+  '[',
+  $.expression,
+  ']',
+  )),
+  ),
+  varAssign: $ => choice(
+  seq(
+  optional($.attributeInstances),
+  $.lValue,
+  '=',
+  $.expression,
+  ';',
+  ),
+  seq(
+  optional($.attributeInstances),
+  optional('let'),
+  $.lValue,
+  '<-',
+  $.expression,
+  ';',
+  ),
+  seq(
+  optional($.attributeInstances),
+  'match',
+  $.pattern,
+  '=',
+  $.expression,
+  ';',
+  ),
+  seq(
+  optional($.attributeInstances),
+  'match',
+  $.pattern,
+  '<-',
+  $.expression,
+  ';',
+  ),
+  ),
   lValue: $ => choice(
-    $.identifier,
-    seq($.lValue, '.', $.identifier),
-    seq($.lValue, '[', $.expression, ']'),
-    seq($.lValue, '[', $.expression, ':', $.expression, ']'),
-  ),
-  
-  // Section 9.4
-  // Register reads and writes
-  regWrite: $ => prec(PREC.WRITE, choice(
-    seq($.lValue, '<=', $.expression),
-    seq($.lValue, $.arrayIndexes, '<=', $.expression),
-    seq('(', $.expression, ')', '<=', $.expression),
-    seq($.lValue, '[', $.expression, ':', $.expression, ']', '<=', $.expression),
-    seq($.lValue, '.', $.identifier, '<=', $.expression),
+  $.identifier,
+  seq(
+  '{',
+  $.identifier,
+  repeat(seq(
+  ',',
+  $.identifier,
   )),
-  arrayIndexes: $ => seq('[', $.expression, ']', repeat(seq('[', $.expression, ']'))),
-
-  // TODO: case statements
-  // TODO: while loop
-  // TODO: for loop
-
-  // Section 9.8
-  // Function definitions
-  functionDef: $ => seq(optional($.attributeInstances), $.functionProto, choice(
-    $.actionBlock,
-    $.actionValueBlock,
-    repeat($.functionBodyStmt)
-  ), 'endfunction', optional(seq(':', $.identifier))),
-  functionProto: $ => seq('function', $.type, $.identifier, '(', optional($.functionFormals), ')', optional($.provisos), ';'),
-  functionFormals: $ => seq($.functionFormal, repeat(seq(',', $.functionFormal))),
-  functionFormal: $ => seq($.type, $.identifier),
+  '}',
+  ),
+  seq(
+  $.lValue,
+  '.',
+  $.identifier,
+  ),
+  seq(
+  $.lValue,
+  '[',
+  $.expression,
+  ']',
+  ),
+  seq(
+  $.lValue,
+  '[',
+  $.expression,
+  ':',
+  $.expression,
+  ']',
+  ),
+  ),
+  regWrite: $ => choice(
+  seq(
+  $.lValue,
+  '<=',
+  $.expression,
+  ';',
+  ),
+  seq(
+  '(',
+  $.expression,
+  ')',
+  '<=',
+  $.expression,
+  ';',
+  ),
+  seq(
+  $.lValue,
+  $.arrayIndexes,
+  '<=',
+  $.expression,
+  ';',
+  ),
+  seq(
+  $.lValue,
+  '[',
+  $.expression,
+  ':',
+  $.expression,
+  ']',
+  '<=',
+  $.expression,
+  ';',
+  ),
+  seq(
+  $.lValue,
+  '.',
+  $.identifier,
+  '<=',
+  $.expression,
+  ';',
+  ),
+  ),
+  arrayIndexes: $ => seq(
+  '[',
+  $.expression,
+  ']',
+  repeat(seq(
+  '[',
+  $.expression,
+  ']',
+  )),
+  ),
+  beginEndStmt_functionBodyStmt: $ => seq(
+  'begin',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  repeat($.functionBodyStmt),
+  'end',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  beginEndStmt_actionStmt: $ => seq(
+  'begin',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  repeat($.actionStmt),
+  'end',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  beginEndStmt_actionValueStmt: $ => seq(
+  'begin',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  repeat($.actionValueStmt),
+  'end',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  beginEndStmt_moduleStmt: $ => seq(
+  'begin',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  repeat($.moduleStmt),
+  'end',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  beginEndStmt_expressionStmt: $ => seq(
+  'begin',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  repeat($.expressionStmt),
+  'end',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  if_functionBodyStmt: $ => seq(
+  'if',
+  '(',
+  $.condPredicate,
+  ')',
+  $.functionBodyStmt,
+  optional(seq(
+  'else',
+  $.functionBodyStmt,
+  )),
+  ),
+  if_actionStmt: $ => seq(
+  'if',
+  '(',
+  $.condPredicate,
+  ')',
+  $.actionStmt,
+  optional(seq(
+  'else',
+  $.actionStmt,
+  )),
+  ),
+  if_actionValueStmt: $ => seq(
+  'if',
+  '(',
+  $.condPredicate,
+  ')',
+  $.actionValueStmt,
+  optional(seq(
+  'else',
+  $.actionValueStmt,
+  )),
+  ),
+  if_moduleStmt: $ => seq(
+  'if',
+  '(',
+  $.condPredicate,
+  ')',
+  $.moduleStmt,
+  optional(seq(
+  'else',
+  $.moduleStmt,
+  )),
+  ),
+  if_expressionStmt: $ => seq(
+  'if',
+  '(',
+  $.condPredicate,
+  ')',
+  $.expressionStmt,
+  optional(seq(
+  'else',
+  $.expressionStmt,
+  )),
+  ),
+  case_functionBodyStmt: $ => choice(
+  seq(
+  'case',
+  '(',
+  $.expression,
+  ')',
+  repeat($.caseItem_functionBodyStmt),
+  optional($.defaultItem_functionBodyStmt),
+  'endcase',
+  ),
+  seq(
+  'case',
+  '(',
+  $.expression,
+  ')',
+  'matches',
+  repeat($.casePatItem_functionBodyStmt),
+  optional($.defaultItem_functionBodyStmt),
+  'endcase',
+  ),
+  ),
+  case_actionStmt: $ => choice(
+  seq(
+  'case',
+  '(',
+  $.expression,
+  ')',
+  repeat($.caseItem_actionStmt),
+  optional($.defaultItem_actionStmt),
+  'endcase',
+  ),
+  seq(
+  'case',
+  '(',
+  $.expression,
+  ')',
+  'matches',
+  repeat($.casePatItem_actionStmt),
+  optional($.defaultItem_actionStmt),
+  'endcase',
+  ),
+  ),
+  case_actionValueStmt: $ => choice(
+  seq(
+  'case',
+  '(',
+  $.expression,
+  ')',
+  repeat($.caseItem_actionValueStmt),
+  optional($.defaultItem_actionValueStmt),
+  'endcase',
+  ),
+  seq(
+  'case',
+  '(',
+  $.expression,
+  ')',
+  'matches',
+  repeat($.casePatItem_actionValueStmt),
+  optional($.defaultItem_actionValueStmt),
+  'endcase',
+  ),
+  ),
+  case_moduleStmt: $ => choice(
+  seq(
+  'case',
+  '(',
+  $.expression,
+  ')',
+  repeat($.caseItem_moduleStmt),
+  optional($.defaultItem_moduleStmt),
+  'endcase',
+  ),
+  seq(
+  'case',
+  '(',
+  $.expression,
+  ')',
+  'matches',
+  repeat($.casePatItem_moduleStmt),
+  optional($.defaultItem_moduleStmt),
+  'endcase',
+  ),
+  ),
+  case_expressionStmt: $ => choice(
+  seq(
+  'case',
+  '(',
+  $.expression,
+  ')',
+  repeat($.caseItem_expressionStmt),
+  optional($.defaultItem_expressionStmt),
+  'endcase',
+  ),
+  seq(
+  'case',
+  '(',
+  $.expression,
+  ')',
+  'matches',
+  repeat($.casePatItem_expressionStmt),
+  optional($.defaultItem_expressionStmt),
+  'endcase',
+  ),
+  ),
+  caseItem_functionBodyStmt: $ => seq(
+  $.expression,
+  repeat(seq(
+  ',',
+  $.expression,
+  )),
+  ':',
+  $.functionBodyStmt,
+  ),
+  caseItem_actionStmt: $ => seq(
+  $.expression,
+  repeat(seq(
+  ',',
+  $.expression,
+  )),
+  ':',
+  $.actionStmt,
+  ),
+  caseItem_actionValueStmt: $ => seq(
+  $.expression,
+  repeat(seq(
+  ',',
+  $.expression,
+  )),
+  ':',
+  $.actionValueStmt,
+  ),
+  caseItem_moduleStmt: $ => seq(
+  $.expression,
+  repeat(seq(
+  ',',
+  $.expression,
+  )),
+  ':',
+  $.moduleStmt,
+  ),
+  caseItem_expressionStmt: $ => seq(
+  $.expression,
+  repeat(seq(
+  ',',
+  $.expression,
+  )),
+  ':',
+  $.expressionStmt,
+  ),
+  defaultItem_functionBodyStmt: $ => seq(
+  'default',
+  optional(':'),
+  $.functionBodyStmt,
+  ),
+  defaultItem_actionStmt: $ => seq(
+  'default',
+  optional(':'),
+  $.actionStmt,
+  ),
+  defaultItem_actionValueStmt: $ => seq(
+  'default',
+  optional(':'),
+  $.actionValueStmt,
+  ),
+  defaultItem_moduleStmt: $ => seq(
+  'default',
+  optional(':'),
+  $.moduleStmt,
+  ),
+  defaultItem_expressionStmt: $ => seq(
+  'default',
+  optional(':'),
+  $.expressionStmt,
+  ),
+  while_functionBodyStmt: $ => seq(
+  'while',
+  '(',
+  $.expression,
+  ')',
+  $.functionBodyStmt,
+  ),
+  while_actionStmt: $ => seq(
+  'while',
+  '(',
+  $.expression,
+  ')',
+  $.actionStmt,
+  ),
+  while_actionValueStmt: $ => seq(
+  'while',
+  '(',
+  $.expression,
+  ')',
+  $.actionValueStmt,
+  ),
+  while_moduleStmt: $ => seq(
+  'while',
+  '(',
+  $.expression,
+  ')',
+  $.moduleStmt,
+  ),
+  while_expressionStmt: $ => seq(
+  'while',
+  '(',
+  $.expression,
+  ')',
+  $.expressionStmt,
+  ),
+  for_functionBodyStmt: $ => seq(
+  'for',
+  '(',
+  $.forInit,
+  ';',
+  $.forTest,
+  ';',
+  $.forIncr,
+  ')',
+  $.functionBodyStmt,
+  ),
+  for_actionStmt: $ => seq(
+  'for',
+  '(',
+  $.forInit,
+  ';',
+  $.forTest,
+  ';',
+  $.forIncr,
+  ')',
+  $.actionStmt,
+  ),
+  for_actionValueStmt: $ => seq(
+  'for',
+  '(',
+  $.forInit,
+  ';',
+  $.forTest,
+  ';',
+  $.forIncr,
+  ')',
+  $.actionValueStmt,
+  ),
+  for_moduleStmt: $ => seq(
+  'for',
+  '(',
+  $.forInit,
+  ';',
+  $.forTest,
+  ';',
+  $.forIncr,
+  ')',
+  $.moduleStmt,
+  ),
+  for_expressionStmt: $ => seq(
+  'for',
+  '(',
+  $.forInit,
+  ';',
+  $.forTest,
+  ';',
+  $.forIncr,
+  ')',
+  $.expressionStmt,
+  ),
+  forInit: $ => choice(
+  $.forOldInit,
+  $.forNewInit,
+  ),
+  forOldInit: $ => seq(
+  $.simpleVarAssign,
+  repeat(seq(
+  ',',
+  $.simpleVarAssign,
+  )),
+  ),
+  simpleVarAssign: $ => seq(
+  $.identifier,
+  '=',
+  $.identifier,
+  ),
+  forNewInit: $ => seq(
+  optional($.type),
+  $.identifier,
+  '=',
+  $.expression,
+  repeat(seq(
+  ',',
+  $.simpleVarDeclAssign,
+  )),
+  ),
+  simpleVarDeclAssign: $ => seq(
+  optional($.type),
+  $.identifier,
+  '=',
+  $.expression,
+  ),
+  forTest: $ => $.expression,
+  forIncr: $ => seq(
+  $.varIncr,
+  repeat(seq(
+  ',',
+  $.varIncr,
+  )),
+  ),
+  varIncr: $ => seq(
+  $.identifier,
+  '=',
+  $.expression,
+  ),
+  functionDef: $ => choice(
+  seq(
+  optional($.attributeInstances),
+  $.functionProto,
+  $.functionBody,
+  'endfunction',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  seq(
+  'function',
+  optional($.type),
+  $.identifier,
+  '(',
+  optional($.functionFormals),
+  ')',
+  optional($.provisos),
+  '=',
+  $.expression,
+  ';',
+  ),
+  ),
+  functionProto: $ => seq(
+  'function',
+  optional($.type),
+  $.identifier,
+  optional(seq(
+  '(',
+  optional($.functionFormals),
+  ')',
+  )),
+  optional($.provisos),
+  ';',
+  ),
+  functionFormals: $ => seq(
+  $.functionFormal,
+  repeat(seq(
+  ',',
+  $.functionFormal,
+  )),
+  ),
+  functionFormal: $ => seq(
+  optional($.type),
+  $.identifier,
+  optional(seq(
+  '(',
+  optional($.functionFormals),
+  ')',
+  )),
+  ),
+  functionBody: $ => choice(
+  $.actionBlock,
+  $.actionValueBlock,
+  repeat($.functionBodyStmt),
+  ),
   functionBodyStmt: $ => choice(
-    $.returnStmt,
-    $.varDecl,
-    $.varAssign,
-    $.functionDef,
-    $.moduleDef,
-    $.functionBodyBeginEndStmt,
-    $.functionBodyIf,
-    //$.functionBodyCase,
-    //$.functionBodyFor,
-    //$.functionBodyWhile,
+  $.returnStmt,
+  $.varDecl,
+  $.varAssign,
+  $.functionDef,
+  $.moduleDef,
+  $.beginEndStmt_functionBodyStmt,
+  $.if_functionBodyStmt,
+  $.case_functionBodyStmt,
+  $.for_functionBodyStmt,
+  $.while_functionBodyStmt,
   ),
-
-  // Section 9.8.1
-  // Definition of functions by assignment
-  // TODO
-
-  // Section 10
-  // Expressions
+  returnStmt: $ => seq(
+  'return',
+  $.expression,
+  ';',
+  ),
   expression: $ => choice(
-    $.condExpr,
-    $.operatorExpr,
-    $.exprPrimary
+  seq(
+  $.expression,
+  repeat(seq(
+  '&&&',
+  choice(
+  $.expression,
+  seq(
+  $.expression,
+  'matches',
+  $.pattern,
   ),
-  exprPrimary: $ => prec(-1,choice(
-    $.identifier,
-    // TODO: the grammar doesn't specify this, but this is necessary for enum values (True, False)?
-    $.Identifier, 
-    $.intLiteral,
-    $.realLiteral,
-    $.stringLiteral,
-    $.systemFunctionCall,
-    seq('(', $.expression, ')'),
-    // 10.1
-    '?',
-    // 10.4
-    $.bitConcat,
-    $.bitSelect,
-    // 10.5
-    $.beginEndExpr,
-    // 10.6
-    $.actionBlock,
-    // 10.7
-    $.actionValueBlock,
-    // 10.8
-    $.functionCall,
-    // 10.9
-    $.methodCall,
-    // 10.11.1
-    $.structExpr,
-    // 10.11.2
-    seq($.exprPrimary, '.', $.identifier),
-    // 10.11.3
-    $.taggedUnionExpr,
-    // 10.12
-    $.interfaceExpr,
-    // 4.2.1
-    seq(choice('valueOf', 'valueof'), '(', $.type, ')')
+  ),
   )),
-
-  // Section 10.1
-  // Don't-care expressions
-  // '?' rule for exprPrimary
-
-  // Section 10.2
-  // Conditonal expresssions
-  condExpr: $ => prec(PREC.CONDITIONAL, seq($.condPredicate, '?', $.expression, ':', $.expression)),
-
-  // Section 10.3
-  // Unary and binary operators
-
+  '?',
+  $.expression,
+  ':',
+  $.expression,
+  ),
+  seq(
+  $.expression,
+  'matches',
+  $.pattern,
+  repeat(seq(
+  '&&&',
+  choice(
+  $.expression,
+  seq(
+  $.expression,
+  'matches',
+  $.pattern,
+  ),
+  ),
+  )),
+  '?',
+  $.expression,
+  ':',
+  $.expression,
+  ),
+  seq(
+  $.unop,
+  $.expression,
+  ),
+  seq(
+  $.expression,
+  $.binop,
+  $.expression,
+  ),
+  $.exprPrimary,
+  ),
+  exprPrimary: $ => choice(
+  seq(
+  'valueof',
+  '(',
+  $.type,
+  ')',
+  ),
+  seq(
+  'valueOf',
+  '(',
+  $.type,
+  ')',
+  ),
+  $.identifier,
+  $.IntLiteral,
+  $.RealLiteral,
+  $.stringLiteral,
+  $.systemFunctionCall,
+  seq(
+  '(',
+  $.expression,
+  ')',
+  ),
+  '?',
+  $.bitConcat,
+  seq(
+  $.exprPrimary,
+  '[',
+  $.expression,
+  optional(seq(
+  ':',
+  $.expression,
+  )),
+  ']',
+  ),
+  $.beginEndExpr,
+  $.actionBlock,
+  $.actionValueBlock,
+  seq(
+  $.exprPrimary,
+  seq(
+  '(',
+  optional(seq(
+  $.expression,
+  repeat(seq(
+  ',',
+  $.expression,
+  )),
+  )),
+  ')',
+  ),
+  ),
+  seq(
+  $.exprPrimary,
+  '.',
+  $.identifier,
+  seq(
+  '(',
+  optional(seq(
+  $.expression,
+  repeat(seq(
+  ',',
+  $.expression,
+  )),
+  )),
+  ')',
+  ),
+  ),
+  $.typeAssertion,
+  $.structExpr,
+  $.case_functionBodyStmt,
+  seq(
+  $.exprPrimary,
+  '.',
+  $.identifier,
+  ),
+  $.taggedUnionExpr,
+  $.interfaceExpr,
+  $.ruleExpr,
+  $.seqFsmStmt,
+  $.parFsmStmt,
+  $.moduleApp,
+  $.taggedUnionPattern,
+  '?',
+  ),
+  condExpr: $ => seq(
+  $.condPredicate,
+  '?',
+  $.expression,
+  ':',
+  $.expression,
+  ),
+  condPredicate: $ => seq(
+  choice(
+  $.expression,
+  seq(
+  $.expression,
+  'matches',
+  $.pattern,
+  ),
+  ),
+  repeat(seq(
+  '&&&',
+  choice(
+  $.expression,
+  seq(
+  $.expression,
+  'matches',
+  $.pattern,
+  ),
+  ),
+  )),
+  ),
+  exprOrCondPattern: $ => choice(
+  $.expression,
+  seq(
+  $.expression,
+  'matches',
+  $.pattern,
+  ),
+  ),
   operatorExpr: $ => choice(
-    prec(PREC.UNARY, seq(choice('+', '-', '!', '~', '&', '~&', '|', '~|', '^', '^~', '~^'), $.expression)),
-    $._binopExpr
+  seq(
+  $.unop,
+  $.expression,
   ),
-
-  _binopExpr: $ => choice(
-    exprBinop($, PREC.MUL, choice('*', '/', '%')),
-    exprBinop($, PREC.ADD, choice('+', '-')),
-    exprBinop($, PREC.SHIFT, choice('<<', '>>')),
-    exprBinop($, PREC.RELATIONAL, choice('<=', '>=', '<', '>')),
-    exprBinop($, PREC.EQUAL, choice('==', '!=')),
-    exprBinop($, PREC.AND, '&'),
-    exprBinop($, PREC.XOR, '^'),
-    exprBinop($, PREC.XNOR, choice('^~', '~^')),
-    exprBinop($, PREC.OR, '|'),
-    exprBinop($, PREC.LOGICAL_AND, '&&'),
-    exprBinop($, PREC.LOGICAL_OR, '||')
+  seq(
+  $.expression,
+  $.binop,
+  $.expression,
   ),
+  ),
+  unop: $ => choice(
+  '+',
+  '-',
+  '!',
+  '~',
+  '&',
+  '~&',
+  '|',
+  '~|',
+  '^',
+  '^~',
+  '~^',
+  ),
+  binop: $ => choice(
+  '*',
+  '**',
+  '/',
+  '%',
+  '+',
+  '-',
+  '<<',
+  '>>',
+  '<=',
+  '>=',
+  '<',
+  '>',
+  '==',
+  '!=',
+  '&',
+  '^',
+  '~^',
+  '^~',
+  '|',
+  '&&',
+  '&&',
+  '||',
+  ),
+  bitConcat: $ => seq(
+  '{',
+  $.expression,
+  repeat(seq(
+  ',',
+  $.expression,
+  )),
+  '}',
+  ),
+  beginEndExpr: $ => seq(
+  'begin',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  repeat($.expressionStmt),
+  $.expression,
+  'end',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  actionBlock: $ => seq(
+  'action',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  repeat($.actionStmt),
+  'endaction',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  actionStmt: $ => choice(
+  $.regWrite,
+  $.varDo,
+  $.varDeclDo,
+  seq(
+  $.functionCall,
+  ';',
+  ),
+  $.systemTaskStmt,
+  seq(
+  optional($.expression),
+  ';',
+  ),
+  $.actionBlock,
+  $.varDecl,
+  $.varAssign,
+  $.functionDef,
+  $.moduleDef,
+  $.beginEndStmt_actionStmt,
+  $.if_actionStmt,
+  $.case_actionStmt,
+  $.for_actionStmt,
+  $.while_actionStmt,
+  ),
+  actionValueBlock: $ => seq(
+  'actionvalue',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  repeat($.actionValueStmt),
+  'endactionvalue',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  actionValueStmt: $ => choice(
+  $.regWrite,
+  $.varDo,
+  $.varDeclDo,
+  seq(
+  $.functionCall,
+  ';',
+  ),
+  $.systemTaskStmt,
+  $.actionValueBlock,
+  seq(
+  optional($.expression),
+  ';',
+  ),
+  $.returnStmt,
+  $.varDecl,
+  $.varAssign,
+  $.functionDef,
+  $.moduleDef,
+  $.beginEndStmt_actionValueStmt,
+  $.if_actionValueStmt,
+  $.case_actionValueStmt,
+  $.for_actionValueStmt,
+  $.while_actionValueStmt,
+  ),
+  varDeclDo: $ => seq(
+  optional($.attributeInstances),
+  $.type,
+  $.identifier,
+  '<-',
+  $.expression,
+  ';',
+  ),
+  varDo: $ => seq(
+  optional($.attributeInstances),
+  $.identifier,
+  '<-',
+  $.expression,
+  ';',
+  ),
+  functionCall: $ => seq(
+  $.exprPrimary,
+  optional(seq(
+  '(',
+  optional(seq(
+  $.expression,
+  repeat(seq(
+  ',',
+  $.expression,
+  )),
+  )),
+  ')',
+  )),
+  ),
+  methodCall: $ => seq(
+  $.exprPrimary,
+  '.',
+  $.identifier,
+  optional(seq(
+  '(',
+  optional(seq(
+  $.expression,
+  repeat(seq(
+  ',',
+  $.expression,
+  )),
+  )),
+  ')',
+  )),
+  ),
+  typeAssertion: $ => choice(
+  seq(
+  $.type,
+  '\'',
+  $.bitConcat,
+  ),
+  seq(
+  $.type,
+  '\'',
+  '(',
+  $.expression,
+  ')',
+  ),
+  ),
+  structExpr: $ => seq(
+  $.identifier_type,
+  '{',
+  optional(seq(
+  $.memberBind,
+  repeat(seq(
+  ',',
+  $.memberBind,
+  )),
+  )),
+  '}',
+  ),
+  memberBind: $ => seq(
+  $.identifier,
+  ':',
+  $.expression,
+  ),
+  taggedUnionExpr: $ => choice(
+  seq(
+  'tagged',
+  $.identifier_type,
+  '{',
+  $.memberBind,
+  seq(
+  ',',
+  $.memberBind,
+  ),
+  '}',
+  ),
+  seq(
+  'tagged',
+  $.identifier_type,
+  $.exprPrimary,
+  ),
+  ),
+  interfaceExpr: $ => seq(
+  'interface',
+  $.type,
+  optional(';'),
+  repeat($.interfaceStmt),
+  'endinterface',
+  optional(seq(
+  ':',
+  $.identifier_type,
+  )),
+  ),
+  ruleExpr: $ => seq(
+  optional($.attributeInstances),
+  'rules',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  repeat($.ruleStmt),
+  'endrules',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  ruleStmt: $ => choice(
+  $.r_rule,
+  $.expressionStmt,
+  ),
+  pattern: $ => choice(
+  seq(
+  '.',
+  $.identifier,
+  ),
+  '.*',
+  $.constantPattern,
+  $.taggedUnionPattern,
+  $.structPattern,
+  $.tuplePattern,
+  seq(
+  '(',
+  $.pattern,
+  ')',
+  ),
+  ),
+  constantPattern: $ => choice(
+  $.IntLiteral,
+  $.RealLiteral,
+  $.stringLiteral,
+  $.identifier_type,
+  ),
+  taggedUnionPattern: $ => seq(
+  'tagged',
+  $.identifier_type,
+  optional($.pattern),
+  ),
+  structPattern: $ => seq(
+  'tagged',
+  $.identifier_type,
+  '{',
+  $.identifier,
+  ':',
+  $.pattern,
+  repeat(seq(
+  ',',
+  $.identifier,
+  ':',
+  $.pattern,
+  )),
+  '}',
+  ),
+  tuplePattern: $ => seq(
+  '{',
+  $.pattern,
+  repeat(seq(
+  ',',
+  $.pattern,
+  )),
+  '}',
+  ),
+  casePatItem_functionBodyStmt: $ => seq(
+  $.pattern,
+  optional(seq(
+  '&&&',
+  $.expression,
+  )),
+  ':',
+  $.functionBodyStmt,
+  ),
+  casePatItem_actionStmt: $ => seq(
+  $.pattern,
+  optional(seq(
+  '&&&',
+  $.expression,
+  )),
+  ':',
+  $.actionStmt,
+  ),
+  casePatItem_actionValueStmt: $ => seq(
+  $.pattern,
+  optional(seq(
+  '&&&',
+  $.expression,
+  )),
+  ':',
+  $.actionValueStmt,
+  ),
+  casePatItem_moduleStmt: $ => seq(
+  $.pattern,
+  optional(seq(
+  '&&&',
+  $.expression,
+  )),
+  ':',
+  $.moduleStmt,
+  ),
+  casePatItem_expressionStmt: $ => seq(
+  $.pattern,
+  optional(seq(
+  '&&&',
+  $.expression,
+  )),
+  ':',
+  $.expressionStmt,
+  ),
+  caseExpr: $ => seq(
+  'case',
+  '(',
+  $.expression,
+  ')',
+  'matches',
+  repeat($.caseExprItem),
+  'endcase',
+  ),
+  caseExprItem: $ => choice(
+  seq(
+  $.pattern,
+  optional(seq(
+  '&&&',
+  $.expression,
+  )),
+  ':',
+  $.expression,
+  ),
+  seq(
+  'default',
+  optional(':'),
+  $.expression,
+  ),
+  ),
+  systemTaskStmt: $ => choice(
+  seq(
+  $.systemTaskCall,
+  ';',
+  ),
+  seq(
+  $.displayTaskName,
+  '(',
+  optional(seq(
+  $.expression,
+  repeat(seq(
+  ',',
+  $.expression,
+  )),
+  )),
+  ')',
+  ';',
+  ),
+  seq(
+  $.stringTaskName,
+  '(',
+  $.identifier,
+  optional(seq(
+  ',',
+  $.expression,
+  optional(seq(
+  ',',
+  $.expression,
+  )),
+  )),
+  ')',
+  ';',
+  ),
+  seq(
+  '$ungetc',
+  '(',
+  $.expression,
+  ',',
+  $.identifier,
+  ')',
+  ';',
+  ),
+  seq(
+  '$fflush',
+  '(',
+  optional($.identifier),
+  ')',
+  ';',
+  ),
+  seq(
+  '$finish',
+  optional(seq(
+  '(',
+  $.expression,
+  ')',
+  )),
+  ';',
+  ),
+  seq(
+  '$stop',
+  optional(seq(
+  '(',
+  $.expression,
+  ')',
+  )),
+  ),
+  seq(
+  '$dumpvars',
+  ';',
+  ),
+  seq(
+  '$dumpon',
+  ';',
+  ),
+  seq(
+  '$dumpoff',
+  ';',
+  ),
+  ),
+  displayTaskName: $ => choice(
+  '$display',
+  '$displayb',
+  '$displayo',
+  '$displayh',
+  '$write',
+  '$writeb',
+  '$writeo',
+  '$writeh',
+  ),
+  stringTaskName: $ => choice(
+  '$swrite',
+  '$swriteb',
+  '$swriteo',
+  '$swriteh',
+  '$sformat',
+  ),
+  systemFunctionCall: $ => choice(
+  '$time',
+  '$stime',
+  $.systemTaskCall,
+  ),
+  systemTaskCall: $ => choice(
+  seq(
+  '$realtobits',
+  '(',
+  $.expression,
+  ')',
+  ),
+  seq(
+  '$bitstoreal',
+  '(',
+  $.expression,
+  ')',
+  ),
+  seq(
+  '$test$plusargs',
+  '(',
+  $.expression,
+  ')',
+  ),
+  seq(
+  '$format',
+  '(',
+  optional(seq(
+  $.expression,
+  repeat(seq(
+  ',',
+  $.expression,
+  )),
+  )),
+  ')',
+  ),
+  seq(
+  '$fopen',
+  '(',
+  $.expression,
+  optional(seq(
+  ',',
+  $.expression,
+  )),
+  ')',
+  ),
+  seq(
+  $.stringAVTaskName,
+  '(',
+  optional(seq(
+  $.expression,
+  repeat(seq(
+  ',',
+  $.expression,
+  )),
+  )),
+  ')',
+  ),
+  seq(
+  'fgetc',
+  '(',
+  $.identifier,
+  ')',
+  ),
+  ),
+  stringAVTaskName: $ => choice(
+  '$swriteAV',
+  '$swritebAV',
+  '$swriteoAV',
+  '$swritehAV',
+  '$sformatAV',
+  ),
+  attributeInstances: $ => seq(
+  $.attributeInstance,
+  repeat($.attributeInstance),
+  ),
+  attributeInstance: $ => seq(
+  '(*',
+  $.attrSpec,
+  repeat(seq(
+  ',',
+  $.attrSpec,
+  )),
+  '*)',
+  ),
+  attrSpec: $ => seq(
+  $.attrName,
+  optional(seq(
+  '=',
+  $.expression,
+  )),
+  ),
+  attrName: $ => choice(
+  $.identifier,
+  $.identifier_type,
+  ),
+  provisos: $ => seq(
+  'provisos',
+  '(',
+  $.proviso,
+  repeat(seq(
+  ',',
+  $.proviso,
+  )),
+  ')',
+  ),
+  proviso: $ => seq(
+  $.identifier_type,
+  '#',
+  '(',
+  $.type,
+  repeat(seq(
+  ',',
+  $.type,
+  )),
+  ')',
+  ),
+  typeclassDef: $ => seq(
+  'typeclass',
+  $.typeclassIde,
+  $.typeFormals,
+  optional($.provisos),
+  optional($.typedepends),
+  ';',
+  repeat($.overloadedDef),
+  'endtypeclass',
+  optional(seq(
+  ':',
+  $.identifier_type,
+  )),
+  ),
+  typeclassIde: $ => $.identifier_type,
+  typelist: $ => choice(
+  $.typeIde,
+  seq(
+  '(',
+  $.typeIde,
+  repeat(seq(
+  ',',
+  $.typeIde,
+  )),
+  ')',
+  ),
+  ),
+  typedepends: $ => seq(
+  'dependencies',
+  '(',
+  $.typedepend,
+  repeat(seq(
+  ',',
+  $.typedepend,
+  )),
+  ')',
+  ),
+  typedepend: $ => seq(
+  $.typelist,
+  'determines',
+  $.typelist,
+  ),
+  overloadedDef: $ => choice(
+  $.functionProto,
+  $.varDecl,
+  $.moduleProto,
+  $.moduleDef,
+  $.functionDef,
+  ),
+  typeclassInstanceDef: $ => seq(
+  'instance',
+  $.typeclassIde,
+  '#',
+  '(',
+  $.type,
+  repeat(seq(
+  ',',
+  $.type,
+  )),
+  ')',
+  optional($.provisos),
+  ';',
+  repeat(choice(
+  $.varAssign,
+  $.functionDef,
+  $.moduleDef,
+  )),
+  'endinstance',
+  optional(seq(
+  ':',
+  $.typeclassIde,
+  )),
+  ),
+  derives: $ => seq(
+  'deriving',
+  '(',
+  $.typeclassIde,
+  repeat(seq(
+  ',',
+  $.typeclassIde,
+  )),
+  ')',
+  ),
+  externModuleImport: $ => seq(
+  'import',
+  '"BVI"',
+  optional(seq(
+  $.identifier,
+  '=',
+  )),
+  $.moduleProto,
+  repeat($.moduleStmt),
+  repeat($.importBVIStmt),
+  'endmodule',
+  optional(seq(
+  ':',
+  $.identifier,
+  )),
+  ),
+  importBVIStmt: $ => choice(
+  $.parameterBVIStmt,
+  $.methodBVIStmt,
+  $.portBVIStmt,
+  $.inputClockBVIStmt,
+  $.defaultClockBVIStmt,
+  $.outputClockBVIStmt,
+  $.inputResetBVIStmt,
+  $.defaultResetBVIStmt,
+  $.noResetBVIStmt,
+  $.outputResetBVIStmt,
+  $.ancestorBVIStmt,
+  $.sameFamilyBVIStmt,
+  $.scheduleBVIStmt,
+  $.pathBVIStmt,
+  $.interfaceBVIStmt,
+  $.inoutBVIStmt,
+  ),
+  enabled_sel: $ => seq(
+  'enable',
+  '(',
+  $.portId,
+  ')',
+  ),
+  ready_sel: $ => seq(
+  'ready',
+  '(',
+  $.portId,
+  ')',
+  ),
+  clocked_by_sel: $ => seq(
+  'clocked_by',
+  '(',
+  $.clockId,
+  ')',
+  ),
+  reset_by_sel: $ => seq(
+  'reset_by',
+  '(',
+  $.resetId,
+  ')',
+  ),
+  parameterBVIStmt: $ => seq(
+  'parameter',
+  $.identifier,
+  '=',
+  $.expression,
+  ';',
+  ),
+  methodBVIStmt: $ => seq(
+  'method',
+  optional($.portId),
+  $.identifier,
+  optional(seq(
+  '(',
+  optional(seq(
+  $.portId,
+  repeat(seq(
+  ',',
+  $.portId,
+  )),
+  )),
+  ')',
+  )),
+  repeat(choice(
+  $.enabled_sel,
+  $.ready_sel,
+  $.clocked_by_sel,
+  $.reset_by_sel,
+  )),
+  ';',
+  ),
+  portBVIStmt: $ => seq(
+  'port',
+  $.identifier,
+  repeat(choice(
+  $.clocked_by_sel,
+  $.reset_by_sel,
+  )),
+  '=',
+  $.expression,
+  ';',
+  ),
+  inputClockBVIStmt: $ => seq(
+  'input_clock',
+  optional($.identifier),
+  '(',
+  optional($.portsDef),
+  ')',
+  '=',
+  $.expression,
+  ';',
+  ),
+  portsDef: $ => seq(
+  $.portId,
+  optional(seq(
+  ',',
+  optional($.attributeInstances),
+  $.portId,
+  )),
+  ),
+  portId: $ => seq(
+  optional($.attributeInstance),
+  $.identifier,
+  ),
+  defaultClockBVIStmt: $ => seq(
+  'default_clock',
+  optional($.identifier),
+  optional(seq(
+  '(',
+  optional($.portsDef),
+  ')',
+  )),
+  optional(seq(
+  '=',
+  $.expression,
+  )),
+  ';',
+  ),
+  outputClockBVIStmt: $ => seq(
+  'output_clock',
+  $.identifier,
+  '(',
+  optional($.portsDef),
+  ')',
+  ';',
+  ),
+  inputResetBVIStmt: $ => seq(
+  'input_reset',
+  optional($.identifier),
+  optional(seq(
+  '(',
+  optional($.portId),
+  ')',
+  )),
+  optional($.clocked_by_sel),
+  '=',
+  $.expression,
+  ';',
+  ),
+  clockId: $ => $.identifier,
+  defaultResetBVIStmt: $ => choice(
+  seq(
+  'default_reset',
+  $.identifier,
+  ';',
+  ),
+  seq(
+  'default_reset',
+  optional($.identifier),
+  optional(seq(
+  '(',
+  optional($.portId),
+  ')',
+  )),
+  optional($.clocked_by_sel),
+  optional(seq(
+  '=',
+  $.expression,
+  )),
+  ';',
+  ),
+  ),
+  outputResetBVIStmt: $ => seq(
+  'output_reset',
+  $.identifier,
+  optional(seq(
+  '(',
+  optional($.portId),
+  ')',
+  )),
+  optional($.clocked_by_sel),
+  ';',
+  ),
+  ancestorBVIStmt: $ => seq(
+  'ancestor',
+  '(',
+  $.clockId,
+  ',',
+  $.clockId,
+  ')',
+  ';',
+  ),
+  sameFamilyBVIStmt: $ => seq(
+  'same_family',
+  '(',
+  $.clockId,
+  ',',
+  $.clockId,
+  ')',
+  ';',
+  ),
+  scheduleBVIStmt: $ => seq(
+  'schedule',
+  choice(
+  seq(
+  '(',
+  $.identifier,
+  repeat(seq(
+  ',',
+  $.identifier,
+  )),
+  ')',
+  ),
+  $.identifier,
+  ),
+  $.operatorId,
+  choice(
+  seq(
+  '(',
+  $.identifier,
+  repeat(seq(
+  ',',
+  $.identifier,
+  )),
+  ')',
+  ),
+  $.identifier,
+  ),
+  ';',
+  ),
+  operatorId: $ => choice(
+  'CF',
+  'SB',
+  'SBR',
+  'C',
+  ),
+  pathBVIStmt: $ => seq(
+  'path',
+  '(',
+  $.portId,
+  ',',
+  $.portId,
+  ')',
+  ';',
+  ),
+  interfaceBVIStmt: $ => seq(
+  'interface',
+  $.typeDefType,
+  optional($.typeIde),
+  ';',
+  repeat($.interfaceBVIMembDecl),
+  'endinterface',
+  optional(seq(
+  ':',
+  $.typeIde,
+  )),
+  ),
+  interfaceBVIMembDecl: $ => choice(
+  $.methodBVIStmt,
+  $.interfaceBVIStmt,
+  ),
+  inoutBVIStmt: $ => choice(
+  seq(
+  'inout',
+  $.portId,
+  repeat(choice(
+  $.clocked_by_sel,
+  $.reset_by_sel,
+  )),
+  '=',
+  $.expression,
+  ';',
+  ),
+  seq(
+  'ifc_inout',
+  $.identifier,
+  '(',
+  $.portId,
+  ')',
+  repeat(choice(
+  $.clocked_by_sel,
+  $.reset_by_sel,
+  )),
+  ';',
+  ),
+  ),
+  resetId: $ => $.identifier,
+  noResetBVIStmt: $ => seq(
+  'no_reset',
+  ';',
+  ),
+  externCImport: $ => seq(
+  'import',
+  '"BDPI"',
+  optional(seq(
+  $.identifier,
+  '=',
+  )),
+  'function',
+  $.type,
+  $.identifier,
+  '(',
+  optional($.cFuncArgs),
+  ')',
+  optional($.provisos),
+  ';',
+  ),
+  cFuncArgs: $ => seq(
+  $.cFuncArg,
+  repeat(seq(
+  ',',
+  $.cFuncArg,
+  )),
+  ),
+  cFuncArg: $ => seq(
+  $.type,
+  optional($.identifier),
+  ),
+  fsmStmt: $ => choice(
+  $.exprFsmStmt,
+  $.seqFsmStmt,
+  $.parFsmStmt,
+  $.ifFsmStmt,
+  $.whileFsmStmt,
+  $.repeatFsmStmt,
+  $.forFsmStmt,
+  $.returnFsmStmt,
+  ),
+  exprFsmStmt: $ => choice(
+  seq(
+  $.regWrite,
+  ';',
+  ),
+  seq(
+  $.expression,
+  ';',
+  ),
+  ),
+  seqFsmStmt: $ => seq(
+  'seq',
+  $.fsmStmt,
+  repeat($.fsmStmt),
+  'endseq',
+  ),
+  parFsmStmt: $ => seq(
+  'par',
+  $.fsmStmt,
+  repeat($.fsmStmt),
+  'endpar',
+  ),
+  ifFsmStmt: $ => seq(
+  'if',
+  $.expression,
+  $.fsmStmt,
+  optional(seq(
+  'else',
+  $.fsmStmt,
+  )),
+  ),
+  whileFsmStmt: $ => seq(
+  'while',
+  '(',
+  $.expression,
+  ')',
+  $.loopBodyFsmStmt,
+  ),
+  forFsmStmt: $ => seq(
+  'for',
+  '(',
+  $.fsmStmt,
+  ';',
+  $.expression,
+  ';',
+  $.fsmStmt,
+  ')',
+  $.loopBodyFsmStmt,
+  ),
+  returnFsmStmt: $ => seq(
+  'return',
+  ';',
+  ),
+  repeatFsmStmt: $ => seq(
+  'repeat',
+  '(',
+  $.expression,
+  ')',
+  $.loopBodyFsmStmt,
+  ),
+  loopBodyFsmStmt: $ => choice(
+  $.fsmStmt,
+  seq(
+  'break',
+  ';',
+  ),
+  seq(
+  'continue',
+  ';',
+  ),
+  ),
+  comment: $ => token(choice(
+  seq('//', /.*/),
+  seq(
+    '/*',
+    /[^*]*\*+([^/*][^*]*\*+)*/,
+    '/'
+  )
+  )),
+  CharacterConstant: $ => seq('\'', $.CCharSequence, '\''),
+  CCharSequence: $ => repeat($.CChar),
+  CChar: $ => choice(/~['\\\r\n]/, $.EscapeSequence),
+  NoneWhitespace: $ => /~[ \t]/,
+  EscapeSequence: $ => choice(
+    $.SimpleEscapeSequence,
+    $.OctalEscapeSequence,
+    $.HexadecimalEscapeSequence,
+  ),
+  SimpleEscapeSequence: $ => seq('\\',/['"abfnrtv\\]/),
+  OctalEscapeSequence: $ => seq('\\', $.OctalDigit, optional($.OctalDigit), optional($.OctalDigit)),
+  HexadecimalEscapeSequence: $ => seq('\\x', repeat1($.HexadecimalDigit)),
+  StringLiteral: $ => seq('\"',optional($.SCharSequence), '\"'),
+  SChar: $ => seq(
+    /~["\\\r\n]/,
+    $.EscapeSequence,
+    '\\\n',
+    '\\\r\n'
+  ),
+  HexadecimalDigit: $ => /[0-9a-fA-F]/, // fixme
+  OctalDigit: $ => /[0-7]/, // fixme
+  SCharSequence: $ => repeat1($.SChar), // fixme
+  Digit: $ => /[0-9]/, // fixme
+  Identifier: $ => choice(
+    seq(
+      $.IdentifierNondigit,
+      repeat(choice($.IdentifierNondigit, $.Digit))
+    ),
+    seq('\\', repeat1($.NoneWhitespace))
+  ), // fixme
+  FileName: $ => repeat1(choice($.IdentifierNondigit, $.Digit)), // fixme
+  IdentifierNondigit: $ => $.Nondigit, // fixme
+  Nondigit: $ => /[a-zA-Z_$], // fixme
+  IntLiteral: $ => , // fixme
+  SizedIntLiteral: $ => "a", // fixme
+  UnsizedIntLiteral: $ => "a", // fixme
+  BaseLiteral: $ => "a", // fixme
+  DecNum: $ => "a", // fixme
+  BitWidth: $ => "a", // fixme
+  Sign: $ => "a", // fixme
+  DecDigits: $ => "a", // fixme
+  DecDigitsUnderscore: $ => "a", // fixme
+  HexDigitsUnderscore: $ => "a", // fixme
+  OctDigitsUnderscore: $ => "a", // fixme
+  BinDigitsUnderscore: $ => "a", // fixme
+  RealLiteral: $ => "a", // fixme
+  Exp: $ => "a", // fixme
+  CompilerDirective: $ => "a", // fixme
+  LineNumber: $ => "a", // fixme
+  Level: $ => "a", // fixme
+  MacroName: $ => "a", // fixme
+  MacroFormals: $ => "a", // fixme
+  MacroInvocation_: $ => "a", // fixme
+  MacroInvocation: $ => "a", // fixme
+  MacroActuals: $ => "a", // fixme
+  SubstText: $ => "a", // fixme
+  };
 
-  // 10.4 Bit concatenation and selection
-  bitConcat: $ => seq('{', $.expression, repeat(seq(',', $.expression)), '}'),
-  bitSelect: $ => prec(PREC.BSELECT, seq($.exprPrimary, '[', $.expression, optional(seq(':', $.expression)), ']')),
-
-  // 10.5 Begin-end expressions
+  module.exports = grammar({
+    name: "bluespec",
+    word: $ => $.identifier,
+    rules: rules,
+    extras: $ => [/\s/, $.comment],
+    inline: $ => [
+      $.decNum,
+      $.decDigits,
+      $.unsizedIntLiteral,
+      $.expression
+    ],
+  });
   
-  beginEndExpr: $ => prec.right(seq('begin', optional(seq(':', $.identifier)), repeat($.expressionStmt), $.expression, 'end', optional(seq(':', $.identifier)))),
-
-  expressionStmt: $ => choice($.varDecl,
-    $.varAssign,
-    $.functionDef,
-    $.moduleDef,
-    $.expressionBeginEndStmt,
-    $.expressionIf,
-    //$.expressionCase,
-    //$.expressionFor,
-    //$.expressionWhile
-  ),
-
-  // 10.6 Actions and action blocks
-
-  actionBlock: $ => prec.right(seq('action', optional(seq(':', $.identifier)), repeat($.actionStmt), $.expression, 'endaction', optional(seq(':', $.identifier)))),
-  actionStmt: $ => prec(3,choice($.regWrite,
-    $.varDo, $.varDeclDo,
-    $.functionCallStmt,
-    $.methodCallStmt,
-    $.systemTaskStmt,    
-    seq('(', $.expression, ')'),
-    $.actionBlock,
-    $.varDecl,
-    $.varAssign,
-    $.functionDef,
-    $.moduleDef,
-    $.actionBeginEndStmt,
-    $.actionIf,
-    //$.actionCase,
-    //$.actionFor,
-    //$.actionWhile
-  )),
-
-  // 10.7 Actionvalue blocks
-  actionValueBlock: $ => prec.right(seq('actionvalue', optional(seq(':', $.identifier)), repeat($.actionValueStmt), $.expression, 'endactionvalue', optional(seq(':', $.identifier)))),
-  actionValueStmt: $ => prec(PREC.AVSTMT, choice($.regWrite,
-    $.varDo, $.varDeclDo,
-    $.functionCallStmt,
-    $.methodCallStmt,
-    $.systemTaskStmt,
-    seq('(', $.expression, ')'),
-    $.returnStmt,
-    $.varDecl,
-    $.varAssign,
-    $.functionDef,
-    $.moduleDef,
-    $.actionValueBeginEndStmt,
-    $.actionValueIf,
-    //$.actionValueCase,
-    //$.actionValueFor,
-    //$.actionValueWhile
-  )),
-
-  varDeclDo: $ => seq($.type, $.identifier, '<-', $.expression, ';'),
-  varDo: $ => seq($.identifier, '<-', $.expression, ';'),
-
-
-  // 10.8 Function calls
-  // TODO: make parentheses optional
-  functionCall: $ => prec(PREC.CALL,prec.left(seq($.exprPrimary, seq('(', optional(seq($.expression, repeat(seq(',', $.expression)))), ')')))),
-  functionCallStmt: $ => seq($.functionCall, ';'),
-
-  // 10.9 Method calls
-  methodCall: $ => prec(PREC.MCALL, prec.left(seq($.exprPrimary, '.',  $.identifier, optional(seq('(', optional(seq($.expression, repeat(seq(',', $.expression)))), ')'))))),
-  methodCallStmt: $ => seq($.methodCall, ';'),
-
-  // 10.11.1 Struct expressions
-  structExpr: $ => seq($.Identifier, '{', $.memberBind, repeat(seq(',', $.memberBind)), '}'),
-  memberBind: $ => seq($.identifier, ':', $.expression),
-
-  // 10.11.3: Tagged union expressions
-  taggedUnionExpr: $ => prec(PREC.TEXPR, choice(
-    seq("tagged", $.Identifier, '{', $.memberBind, repeat(seq(',', $.memberBind)), '}'),
-    seq("tagged", $.Identifier, $.exprPrimary)
-  )),
-
-  // 10.12: Interface expressions
-  returnStmt: $ => seq("return", $.expression, ';'),
-  interfaceExpr: $ => prec.right(seq('interface', $.Identifier, ';', repeat($.interfaceStmt), 'endinterface', optional(seq(':', $.Identifier)))),
-  interfaceStmt: $ => choice($.methodDef, $.subinterfaceDef, $.expressionStmt),
-
-  // 10.13: Rule expressions
-  // TODO
-  
-  // STUBS
-  attributeInstances: $ => "foo",
-  systemFunctionCall: $ => "bing",
-  systemTaskStmt: $ => "sjhsakjhda",
-  provisos: $ => "bar"
-};
-
-ctxts = ['action', 'actionValue', 'expression', 'functionBody']
-ctxts.forEach(ctxt => {
-  genericBeginEndStmt(rules, ctxt);
-  genericIf(rules, ctxt);
-});
-
-module.exports = grammar({
-  name: "bluespec",
-  word: $ => $.identifier,
-  rules: rules,
-  extras: $ => [/\s/, $.comment],
-  inline: $ => [
-    $.decNum,
-    $.decDigits,
-    $.unsizedIntLiteral,
-    $.expression
-  ],
-  conflicts: $ => [
-    [$.intLiteral,$.typeNat],
-    [$.intLiteral,$.bitWidth],
-    //[$.actionStmt, $.exprPrimary],
-    //[$.actionValueStmt, $.exprPrimary],
-    [$.actionBeginEndStmt,$.expressionBeginEndStmt],
-    [$.actionValueBeginEndStmt,$.expressionBeginEndStmt],
-    [$.lValue, $.arrayIndexes],
-    [$.condPredicate, $.condPredicate],
-    //[$.exprPrimary, $.methodCall],
-    //[$.exprPrimary, $.actionStmt],
-    //[$.lValue, $.exprPrimary]
-  ]
-});
